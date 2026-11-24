@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Termómetro ALFA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+/* Layout: tablero de control de un steakhouse; cabecera con semáforo resumido, filtros, 6 tarjetas KPI, gráficos en grilla; pestañas para registrar mesas y ver la ficha */
+:root{
+  --bg:#F4F3F1; --panel:#FFFFFF; --ink:#1B1716; --muted:#655D5A; --line:#E1DCD8; --soft:#EFEBE8;
+  --accent:#B3262E; --accent-soft:#F6E3E3; --ok:#2F7D4F; --warn:#B7791F; --bad:#C0392B; --muted-bar:#CFC8C3; --series2:#3A6EA5;
+  --display:'Archivo','Segoe UI',system-ui,sans-serif; --body:'Public Sans','Segoe UI',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141112; --panel:#1E1A1A; --ink:#F1ECE8; --muted:#ABA19C; --line:#332C2B; --soft:#2A2423;
+  --accent:#E25A61; --accent-soft:#3A2022; --ok:#5DBB82; --warn:#E3A64A; --bad:#EF6B5E; --muted-bar:#4A4140; --series2:#7FA9D9; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141112; --panel:#1E1A1A; --ink:#F1ECE8; --muted:#ABA19C; --line:#332C2B; --soft:#2A2423;
+  --accent:#E25A61; --accent-soft:#3A2022; --ok:#5DBB82; --warn:#E3A64A; --bad:#EF6B5E; --muted-bar:#4A4140; --series2:#7FA9D9; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.5}
+[hidden]{display:none!important}
+.back{font-weight:600;color:var(--accent);text-decoration:none;font-size:13px}
+.login{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:start center;padding:12vh 16px 24px;overflow:auto}
+.login[hidden]{display:none}
+.login form{width:min(360px,100%);display:grid;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px}
+.login input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;box-sizing:border-box}
+.top .who{margin-left:auto;display:flex;gap:10px;align-items:center}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:20px;padding-block:22px 56px;display:grid;gap:20px}
+header.top{display:grid;gap:6px}
+.trow{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
+h1{margin:0;font-family:var(--display);font-weight:800;font-size:clamp(26px,4vw,36px);letter-spacing:-.01em}
+h1 span{color:var(--accent)}
+.badge{font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px;background:var(--accent-soft);color:var(--accent)}
+.badge[hidden]{display:none}
+.take{margin:0;color:var(--muted);max-width:80ch}
+.take b{color:var(--ink);font-weight:700}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{font:inherit;font-weight:600;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:8px 12px;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label.f{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+select,input[type=date],input[type=number],input[type=text]{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-width:0}
+.btn{font:inherit;font-weight:600;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--bad);border-color:var(--bad);background:none}
+.btn:disabled{opacity:.5;cursor:default}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px}
+.card{all:unset;box-sizing:border-box;display:grid;gap:6px;align-content:start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;cursor:pointer;min-width:0}
+.card[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card .proc{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.card .name{font-weight:700}
+.card .val{font-family:var(--display);font-weight:800;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
+.chip i{width:8px;height:8px;border-radius:50%;display:inline-block;background:currentColor}
+.s-ok{color:var(--ok)}.s-warn{color:var(--warn)}.s-bad{color:var(--bad)}.s-none{color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}
+.track{position:relative;height:8px;border-radius:4px;background:var(--soft);overflow:hidden}
+.fill{display:block;height:100%;border-radius:4px}
+.f-ok{background:var(--ok)}.f-warn{background:var(--warn)}.f-bad{background:var(--bad)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:8px;align-content:start;min-width:0}
+.panel h3{margin:0;font-family:var(--display);font-weight:700;font-size:16px}
+.panel p{margin:0}
+h2{margin:6px 0 0;font-family:var(--display);font-weight:700;font-size:18px}
+.chart{position:relative;min-height:200px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--body)}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:6px 10px;font-size:12px;white-space:nowrap;z-index:3}
+.tip .t1{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.ln{width:18px;border-top:2px dashed var(--ink);display:inline-block}
+.ln.dot{border-top:2px dotted var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:12px}
+.stat b{display:block;font-family:var(--display);font-weight:800;font-size:22px;font-variant-numeric:tabular-nums}
+.tbox{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-size:12px;font-weight:700}
+td.num{font-variant-numeric:tabular-nums}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px}
+.form label{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.form .hint{font-weight:400}
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.msg{font-size:13px;font-weight:600}
+.msg.ok{color:var(--ok)}.msg.err{color:var(--bad)}
+.empty{color:var(--muted);font-size:13px;padding:24px 0;text-align:center}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--accent-soft);padding:10px;border-radius:8px}
+.lead{margin:0;max-width:85ch}
+.src{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.src .panel b.n{font-family:var(--display);font-size:30px;font-weight:800;line-height:1}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px}
+.kv div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kv b{display:block;font-family:var(--display);font-size:22px;font-weight:800}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.t-ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.t-warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.t-bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.t-proc{background:var(--soft);color:var(--ink)}
+.quote{border-left:3px solid var(--accent);padding:4px 0 4px 12px;margin:0;font-weight:500}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px}
+.flow .panel h3{font-size:15px}
+.flow .pn{font-family:var(--display);font-weight:800;color:var(--accent);font-size:20px}
+details{font-size:13px;color:var(--muted)}
+details summary{cursor:pointer;color:var(--ink);font-weight:600}
+details ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}
+code{font-size:12px;background:var(--soft);padding:1px 5px;border-radius:4px}
+</style>
+</head><body>
+
+<div class="login" id="login" hidden><form id="loginf" novalidate>
+  <h1 style="font-size:26px">Termómetro <span>ALFA</span></h1><p class="small" style="margin:0">Acceso del personal</p>
+  <label class="f">Correo del personal<input id="lg_mail" type="email" autocomplete="username"></label>
+  <label class="f">Contraseña<input id="lg_pass" type="password" autocomplete="current-password"></label>
+  <button class="btn primary" id="lg_go" type="button">Ingresar</button><p class="msg" id="lg_msg" role="status" style="margin:0;min-height:1.2em"></p>
+</form></div>
+<div class="wrap">
+  <header class="top">
+    <div class="trow"><h1>Termómetro <span>ALFA</span></h1><span class="badge" id="simBadge" hidden></span><span class="who"><a class="back" href="/">← ALFA Conecta</a><button class="btn" id="logout" type="button" hidden>Salir</button></span></div>
+    <p class="take" id="take">Cargando las mesas registradas…</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" id="tab-diagnostico" aria-selected="false" aria-controls="p-diagnostico">1 · Diagnóstico</button>
+    <button role="tab" id="tab-procesos" aria-selected="false" aria-controls="p-procesos">2 · Procesos y problemas</button>
+    <button role="tab" id="tab-ficha" aria-selected="false" aria-controls="p-ficha">3 · Los 6 KPIs</button>
+    <button role="tab" id="tab-tablero" aria-selected="true" aria-controls="p-tablero">4 · Tablero</button>
+    <button role="tab" id="tab-uso" aria-selected="false" aria-controls="p-uso">5 · Uso y limitaciones</button>
+    <button role="tab" id="tab-registro" aria-selected="false" aria-controls="p-registro">Registrar mesas</button>
+  </nav>
+
+  <!-- DIAGNÓSTICO -->
+  <section id="p-diagnostico" role="tabpanel" aria-labelledby="tab-diagnostico" hidden style="display:grid;gap:16px">
+    <p class="lead"><b>Objetivo:</b> identificar los KPIs que controlan los procesos con los que ALFA Meat Culture entrega valor a sus clientes, y construir un dashboard para hacerles seguimiento.</p>
+    <h2>¿De dónde salen los datos?</h2>
+    <div class="src">
+      <section class="panel"><b class="n">6</b><h3>Entrevistas a profundidad</h3><p class="small">Cómo vive el cliente cada etapa de su visita. Explican por qué ocurre cada falla.</p></section>
+      <section class="panel"><b class="n">46</b><h3>Cuestionario de percepción (oct. 2026)</h3><p class="small">Satisfacción por etapa, problemas, reclamos y NPS. Da el punto de partida de los KPIs.</p></section>
+      <section class="panel"><b class="n">81</b><h3>Encuesta SERVQUAL (set. 2026)</h3><p class="small">Expectativa frente a percepción en 19 aspectos. Muestra las brechas de calidad.</p></section>
+    </div>
+    <h2>Punto de partida</h2>
+    <div class="kv">
+      <div><span class="small">Satisfacción global (CSAT)</span><b>87,0%</b></div>
+      <div><span class="small">NPS</span><b>+46</b></div>
+      <div><span class="small">Intención de volver</span><b>87,0%</b></div>
+      <div><span class="small">Repiten visita</span><b>52,2%</b></div>
+      <div><span class="small">Tuvieron un problema</span><b>15,2%</b></div>
+      <div><span class="small">Brecha SERVQUAL general</span><b>−0,04</b></div>
+    </div>
+    <h2>Las 7 etapas del cliente</h2>
+    <section class="panel">
+      <div class="tbox"><table><thead><tr><th>Etapa</th><th>Estado</th><th>Qué funciona</th><th>Qué falla</th></tr></thead><tbody>
+        <tr><td>1. Descubrir y reservar</td><td><span class="tag t-warn">Atención</span></td><td>Reservar por WhatsApp es fácil (84%)</td><td>Lo que se promociona en redes no siempre está; información previa 81%</td></tr>
+        <tr><td>2. Llegar y ubicarse</td><td><span class="tag t-bad">Crítico</span></td><td>Bienvenida cálida, ambiente atractivo</td><td>Estacionar: 60,5% satisfechos; recepción 78%; la mesa reservada no siempre está lista</td></tr>
+        <tr><td>3. Elegir y ordenar</td><td><span class="tag t-bad">Crítico</span></td><td>Carta clara (87%)</td><td>Platos disponibles 76%; orientación del mozo 77%; no siempre preguntan por alergias</td></tr>
+        <tr><td>4. Esperar y recibir</td><td><span class="tag t-warn">Atención</span></td><td>Sabor 87%, cocción 89%</td><td>Tiempo de espera 78%; casos de término equivocado y plato tibio</td></tr>
+        <tr><td>5. Consumir y pedir algo más</td><td><span class="tag t-warn">Atención</span></td><td>Ambiente 89%, amabilidad</td><td>El mozo no aparece en hora punta (83%)</td></tr>
+        <tr><td>6. Pagar y salir</td><td><span class="tag t-ok">Fortaleza</span></td><td>Cuenta correcta 89%, pago rápido 85%</td><td>Demora en traer la cuenta en hora punta</td></tr>
+        <tr><td>7. Comentar y volver</td><td><span class="tag t-warn">Atención</span></td><td>NPS +46; 87% volvería</td><td>33% de clientes pasivos</td></tr>
+      </tbody></table></div>
+    </section>
+    <p class="quote">La calidad técnica (el plato) es la fortaleza de ALFA; las brechas están en la calidad funcional, en cómo se entrega el servicio (Grönroos). Por eso los KPIs controlan los procesos, no solo el plato.</p>
+  </section>
+
+  <!-- PROCESOS -->
+  <section id="p-procesos" role="tabpanel" aria-labelledby="tab-procesos" hidden style="display:grid;gap:16px">
+    <p class="lead">Las 7 etapas son lo que vive el cliente; los procesos son lo que hace ALFA por dentro. Agrupamos las etapas en 5 procesos de entrega de valor, que son los que controlan los KPIs.</p>
+    <div class="flow">
+      <section class="panel"><span class="pn">P1</span><h3>Reserva y recepción</h3><p class="small">Etapas 1 y 2 · canales, ficha de reserva, mesa lista, estacionamiento</p></section>
+      <section class="panel"><span class="pn">P2</span><h3>Asesoría y toma del pedido</h3><p class="small">Etapa 3 · carta, cortes, alergias, disponibilidad</p></section>
+      <section class="panel"><span class="pn">P3</span><h3>Preparación y entrega</h3><p class="small">Etapa 4 · cocina, parrilla, barra, control antes de servir</p></section>
+      <section class="panel"><span class="pn">P4</span><h3>Atención en mesa y solución de problemas</h3><p class="small">Etapa 5 · seguimiento de la mesa, reclamos, higiene</p></section>
+      <section class="panel"><span class="pn">P5</span><h3>Cierre, fidelización y reputación</h3><p class="small">Etapas 6 y 7 · cobro, encuesta, reseñas, regreso</p></section>
+    </div>
+    <h2>Seis problemas principales</h2>
+    <section class="panel">
+      <div class="tbox"><table><thead><tr><th>Prioridad</th><th>Problema</th><th>Por qué importa</th><th>Proceso</th></tr></thead><tbody>
+        <tr><td>1</td><td>El pedido no siempre sale bien: término, temperatura y tiempo</td><td>Es la promesa central de un restaurante de carnes y la principal razón para no volver</td><td><span class="tag t-proc">P3</span></td></tr>
+        <tr><td>2</td><td>Atención irregular y lenta en hora punta</td><td>El cliente siente que «hay que insistir»</td><td><span class="tag t-proc">P4</span></td></tr>
+        <tr><td>3</td><td>Resolver un reclamo depende del administrador</td><td>Hoy 2 de 7 clientes con problema no quedan conformes</td><td><span class="tag t-proc">P4</span></td></tr>
+        <tr><td>4</td><td>Los platos promocionados se agotan</td><td>No se cumple lo que el cliente vio en redes</td><td><span class="tag t-proc">P2</span></td></tr>
+        <tr><td>5</td><td>Acceso difícil y poco estacionamiento</td><td>Es lo peor evaluado y la primera impresión</td><td><span class="tag t-proc">P1</span></td></tr>
+        <tr><td>6</td><td>No se mide si el cliente vuelve ni recomienda</td><td>El 33% de pasivos podría irse a la competencia</td><td><span class="tag t-proc">P5</span></td></tr>
+      </tbody></table></div>
+    </section>
+  </section>
+
+  <!-- TABLERO -->
+  <section id="p-tablero" role="tabpanel" aria-labelledby="tab-tablero" style="display:grid;gap:16px">
+    <div class="filters">
+      <label class="f">Periodo<select id="fPer"><option value="Todos">Todo el periodo</option></select></label>
+      <label class="f">Turno<select id="fTur"><option value="Todos">Todos</option><option>Almuerzo</option><option>Cena</option></select></label>
+      <label class="f">Hora punta<select id="fPun"><option value="Todos">Todos</option><option value="Sí">Solo hora punta</option><option value="No">Fuera de hora punta</option></select></label>
+      <button class="btn" id="fReset" type="button">Quitar filtros</button>
+      <span class="small" id="nMesas"></span>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <section class="panel">
+      <h3 id="trendTitle">Evolución mensual</h3>
+      <p class="small">Toca una tarjeta para cambiar el KPI. Usa los filtros de turno y hora punta.</p>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Resultado del mes</span><span><i class="ln"></i>Meta</span><span><i class="ln dot"></i>Inicio (oct-26, real)</span></div>
+      <div class="chart" id="trend" style="min-height:260px"></div>
+    </section>
+
+    <h2>Dónde se pierde valor</h2>
+    <div class="grid">
+      <section class="panel">
+        <h3>Hora punta frente al resto del día</h3>
+        <p class="small">Viernes y sábado en la cena, domingo al almuerzo. No usa el filtro de hora punta.</p>
+        <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Hora punta</span><span><i class="sw" style="background:var(--series2)"></i>Resto del día</span></div>
+        <div class="chart" id="punta"></div>
+      </section>
+      <section class="panel">
+        <h3>Platos que se agotan</h3>
+        <p class="small">Veces que el plato pedido no estaba disponible.</p>
+        <div class="chart" id="quiebres"></div>
+      </section>
+    </div>
+
+    <h2>Recuperación y lealtad</h2>
+    <div class="grid">
+      <section class="panel">
+        <h3>Reclamos</h3>
+        <p class="small">Meta de solución: 10 minutos o menos.</p>
+        <div class="stats">
+          <div class="stat"><span class="small">Mesas con reclamo</span><b id="rPct">—</b></div>
+          <div class="stat"><span class="small">Reclamos</span><b id="rN">—</b></div>
+          <div class="stat"><span class="small">Minutos promedio</span><b id="rMin">—</b></div>
+          <div class="stat"><span class="small">Resueltos en ≤ 10 min</span><b id="r10">—</b></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h3>¿Quién nos recomienda?</h3>
+        <p class="small">NPS = % promotores (9-10) − % detractores (0-6).</p>
+        <div class="chart" id="nps" style="min-height:100px"></div>
+      </section>
+      <section class="panel">
+        <h3>Recomendación promedio por mozo</h3>
+        <p class="small">Escala de 0 a 10, evaluación al pagar (tablet u hoja).</p>
+        <div class="chart" id="mozos"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- REGISTRO -->
+  <section id="p-registro" role="tabpanel" aria-labelledby="tab-registro" hidden style="display:grid;gap:16px">
+    <section class="panel">
+      <h3>Registrar una mesa</h3>
+      <p class="small">Las mesas cobradas en ALFA Conecta llegan solas. Usa este formulario solo para registrar una mesa a mano.</p>
+      <div class="form" id="formMesa">
+        <label>Fecha<input type="date" id="mFecha" required></label>
+        <label>Turno<select id="mTurno"><option>Almuerzo</option><option>Cena</option></select></label>
+        <label>Hora punta <span class="hint" id="mPuntaHint"></span><select id="mPunta"><option>No</option><option>Sí</option></select></label>
+        <label>Mozo<select id="mMozo"></select></label>
+        <label>Plato principal<select id="mPlato"></select></label>
+        <label>¿Plato disponible?<select id="mDisp"><option>Sí</option><option>No</option></select></label>
+        <label>Minutos hasta servir<input type="number" id="mMin" min="1" max="180" step="1" placeholder="18"></label>
+        <label>¿Pedido perfecto? <span class="hint">término, temperatura y contenido</span><select id="mPerf"><option>Sí</option><option>No</option></select></label>
+        <label>¿Hubo reclamo?<select id="mRec"><option>No</option><option>Sí</option></select></label>
+        <label id="lMinRes" hidden>Minutos para resolver<input type="number" id="mMinRes" min="0" max="180" step="1" placeholder="8"></label>
+        <label id="lSat" hidden>Satisfacción con la solución (1-5)<select id="mSat"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label>Acceso y estacionamiento (1-5)<select id="mAcc"><option value="">Sin respuesta</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label>Recomendaría (0-10)<select id="mRecom"><option value="">Sin respuesta</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></label>
+      </div>
+      <div class="actions"><button class="btn primary" id="mSave" type="button">Guardar mesa</button><span class="msg" id="mMsg" role="status"></span></div>
+    </section>
+
+    <section class="panel">
+      <h3>Importar desde el Excel</h3>
+      <p class="small">En el Excel del Termómetro, abre la hoja «Datos», guárdala como CSV y súbela aquí. Se leen las columnas en el mismo orden del Excel (N°, Fecha, Turno, Hora punta, Mozo, Plato…).</p>
+      <div class="actions"><input type="file" id="csvFile" accept=".csv,text/csv"><button class="btn primary" id="csvGo" type="button" disabled>Importar</button><span class="msg" id="csvMsg" role="status"></span></div>
+    </section>
+
+    <section class="panel">
+      <h3>Últimas mesas registradas</h3>
+      <div class="actions" id="simLoad" hidden><button class="btn" id="simAdd" type="button">Cargar 180 mesas simuladas (nov-26 a abr-27)</button><span class="small">El mismo historial del Excel, para mostrar cómo funciona el tablero.</span><span class="msg" id="simMsg" role="status"></span></div>
+      <div class="actions" id="simTools" hidden>
+        <button class="btn danger" id="simDel" type="button">Borrar datos simulados</button>
+        <span class="small">Úsalo cuando ALFA empiece a registrar datos reales.</span>
+      </div>
+      <div class="confirm" id="simConfirm" hidden><span>¿Borrar <b id="simCount">0</b> mesas simuladas? No se puede deshacer.</span><button class="btn danger" id="simYes" type="button">Sí, borrar</button><button class="btn" id="simNo" type="button">Cancelar</button></div>
+      <div class="tbox"><table><thead><tr><th>Fecha</th><th>Turno</th><th>Mozo</th><th>Plato</th><th>Min.</th><th>Perfecto</th><th>Reclamo</th><th>Recom.</th><th>Origen</th><th></th></tr></thead><tbody id="lastRows"></tbody></table></div>
+    </section>
+  </section>
+
+  <!-- KPIs -->
+  <section id="p-ficha" role="tabpanel" aria-labelledby="tab-ficha" hidden style="display:grid;gap:16px">
+    <p class="lead">Un KPI por cada problema principal. Los KPIs 2, 3 y 4 son <b>de proceso</b>: se miden dentro del restaurante y avisan antes de que el cliente se queje. Los KPIs 1, 5 y 6 son <b>de resultado</b>: miden lo que percibe el cliente.</p>
+    <section class="panel">
+      <h3>Qué medimos y cómo se calcula</h3>
+      <div class="tbox"><table><thead><tr><th>KPI</th><th>Tipo</th><th>Cómo se calcula</th><th>Inicio</th><th>Meta 6 meses</th><th>Responsable y frecuencia</th></tr></thead><tbody>
+        <tr><td><b>1. Acceso y estacionamiento</b><br><span class="small">P1 · Reserva y recepción</span></td><td><span class="tag t-proc">Resultado</span></td><td>Clientes que califican 4 o 5 la facilidad para llegar y estacionar ÷ encuestados</td><td class="num">60,5%</td><td class="num">≥ 75%</td><td>Administrador · mensual, evaluación al pagar</td></tr>
+        <tr><td><b>2. Platos disponibles</b><br><span class="small">P2 · Asesoría y toma del pedido</span></td><td><span class="tag t-proc">Proceso</span></td><td>Pedidos con el plato disponible ÷ pedidos registrados</td><td class="num">75,6%*</td><td class="num">≥ 95%</td><td>Jefe de cocina · diaria, inventario y POS</td></tr>
+        <tr><td><b>3. Pedido perfecto</b><br><span class="small">P3 · Preparación y entrega</span></td><td><span class="tag t-proc">Proceso</span></td><td>Platos sin devolución ni corrección (término, temperatura, contenido) ÷ platos servidos</td><td class="num">89,1%*</td><td class="num">≥ 98%</td><td>Jefe de cocina · diaria, devoluciones en POS</td></tr>
+        <tr><td><b>4. Platos a tiempo (≤ 20 min)</b><br><span class="small">P3 · Preparación y entrega</span></td><td><span class="tag t-proc">Proceso</span></td><td>Platos principales servidos en 20 min o menos ÷ platos principales</td><td class="num">78,3%*</td><td class="num">≥ 90%</td><td>Jefe de cocina · diaria, hora de comanda y salida</td></tr>
+        <tr><td><b>5. Reclamos bien resueltos</b><br><span class="small">P4 · Atención en mesa y solución de problemas</span></td><td><span class="tag t-proc">Resultado</span></td><td>Clientes con reclamo que califican la solución con 4 o 5 ÷ clientes con reclamo</td><td class="num">71,4%</td><td class="num">≥ 90%</td><td>Jefe de salón · mensual, evaluación al pagar y ALFA Resuelve</td></tr>
+        <tr><td><b>6. NPS</b><br><span class="small">P5 · Cierre, fidelización y reputación</span></td><td><span class="tag t-proc">Resultado</span></td><td>% promotores (9-10) − % detractores (0-6)</td><td class="num">+46</td><td class="num">≥ +55</td><td>Administrador · mensual, evaluación al pagar</td></tr>
+      </tbody></table></div>
+      <p class="small">* Proxy: satisfacción del cliente con ese punto, porque ALFA aún no registra el dato exacto.</p>
+    </section>
+    <section class="panel">
+      <h3>Cómo ayudan: propuesta → KPI → impacto</h3>
+      <div class="tbox"><table><thead><tr><th>KPI</th><th>Propuestas que lo mueven</th><th>Para qué sirve</th><th>Impacto en el cliente</th></tr></thead><tbody>
+        <tr><td><b>Acceso y estacionamiento</b></td><td>Alianza con estacionamiento y valet · guía de llegada en Instagram y WhatsApp</td><td>Saber si llegar al local se volvió más fácil</td><td>Llega sin estrés, mejor primera impresión</td></tr>
+        <tr><td><b>Platos disponibles</b></td><td>Termómetro del plato estrella en redes · Experto ALFA</td><td>Prever cuándo se agota un plato y planificar compras</td><td>Se cumple lo que se promete en redes</td></tr>
+        <tr><td><b>Pedido perfecto</b></td><td>Reserva con ficha · comanda digital · control antes de servir y marcador de término</td><td>Detectar errores antes de que el cliente reclame</td><td>Menos platos devueltos y reclamos</td></tr>
+        <tr><td><b>Platos a tiempo</b></td><td>ALFA Conecta (comanda digital con pantalla en cocina) · atención al ritmo de la mesa</td><td>Ver si la demora está en cocina o en salón, y en qué horario</td><td>Hora punta sin esperas largas</td></tr>
+        <tr><td><b>Reclamos bien resueltos</b></td><td>ALFA Resuelve: soluciones que el mozo da sin pedir permiso</td><td>Medir si el mozo resuelve bien y rápido</td><td>Una falla se vuelve buena experiencia</td></tr>
+        <tr><td><b>NPS</b></td><td>Evaluación al pagar (tablet u hoja) · Club ALFA · experiencia para compartir</td><td>Saber si las mejoras se convierten en recomendaciones</td><td>Más clientes que vuelven y recomiendan</td></tr>
+      </tbody></table></div>
+    </section>
+    <section class="panel">
+      <h3>Relación con los indicadores del curso</h3>
+      <div class="tbox"><table><thead><tr><th>Indicador del curso</th><th>Dónde aparece</th></tr></thead><tbody>
+        <tr><td>CSAT</td><td>Base de los KPIs 1 y 5 (% que califica 4 o 5); CSAT global 87%</td></tr>
+        <tr><td>Índice de lealtad</td><td>NPS (KPI 6)</td></tr>
+        <tr><td>Tiempo promedio de manejo</td><td>Platos a tiempo (KPI 4)</td></tr>
+        <tr><td>Tiempo de resolución del primer contacto</td><td>Minutos para resolver y % resuelto en ≤ 10 min (tablero, ALFA Resuelve)</td></tr>
+        <tr><td>Esfuerzo del cliente (CES)</td><td>Acceso y estacionamiento (KPI 1): qué tan fácil es llegar</td></tr>
+        <tr><td>Tasa de retención</td><td>Tasa de recompra 52,2%: siguiente paso con el Club ALFA</td></tr>
+        <tr><td>Tasa de abandono y valor de vida del cliente</td><td>Requieren historial por cliente; se podrán medir con el Club ALFA</td></tr>
+      </tbody></table></div>
+    </section>
+  </section>
+
+  <!-- USO -->
+  <section id="p-uso" role="tabpanel" aria-labelledby="tab-uso" hidden style="display:grid;gap:16px">
+    <h2>Cómo lo usaría ALFA</h2>
+    <div class="flow">
+      <section class="panel"><span class="pn">Cada día</span><p>Tiempos, platos disponibles y pedido perfecto</p></section>
+      <section class="panel"><span class="pn">Cada semana</span><p>Reclamos, en reunión de salón y cocina</p></section>
+      <section class="panel"><span class="pn">Cada mes</span><p>NPS y evaluaciones de los clientes</p></section>
+      <section class="panel"><span class="pn">Cada semestre</span><p>Encuesta SERVQUAL</p></section>
+    </div>
+    <p class="lead">ALFA Conecta registra cada mesa al cobrarla y el tablero se actualiza solo. En «Registrar mesas» también se pueden agregar mesas a mano o importar el Excel. El semáforo indica qué proceso atender: verde en meta, ámbar a menos de 5 puntos, rojo a 5 o más.</p>
+    <h2>Limitaciones</h2>
+    <section class="panel">
+      <ul style="margin:0;padding-left:18px;display:grid;gap:6px">
+        <li>Las muestras son pequeñas (46 y 81 clientes) y no aleatorias: sirven como punto de partida, no como dato estadístico definitivo.</li>
+        <li>ALFA todavía no registra tiempos, devoluciones ni platos agotados; en esos KPIs el inicio es la opinión del cliente (proxy).</li>
+        <li>Las 180 mesas de nov-26 a abr-27 son simuladas para mostrar cómo funciona; se reemplazan por datos reales cuando ALFA empiece a medir.</li>
+        <li>Con unas 30 mesas al mes, el KPI de reclamos se apoya en pocos casos y puede variar mucho de un mes a otro.</li>
+      </ul>
+    </section>
+  </section>
+</div>
+
+<script>
+(() => {
+  const KPIS = [
+    {kpi: 1, nombre: 'Acceso y estacionamiento', proceso: 'P1 · Reserva y recepción', unidad: '%', meta: 0.75, base: 0.605, margen: 0.05, resp: 'Administrador', frec: 'Mensual · evaluación al pagar', def: '% de mesas que califican el acceso con 4 o 5'},
+    {kpi: 2, nombre: 'Platos disponibles', proceso: 'P2 · Asesoría y toma del pedido', unidad: '%', meta: 0.95, base: 0.756, margen: 0.05, resp: 'Jefe de cocina', frec: 'Diaria · inventario y POS', def: '% de pedidos con el plato disponible'},
+    {kpi: 3, nombre: 'Pedido perfecto', proceso: 'P3 · Preparación y entrega', unidad: '%', meta: 0.98, base: 0.891, margen: 0.05, resp: 'Jefe de cocina', frec: 'Diaria · devoluciones en POS', def: '% de pedidos que llegaron como se pidieron, sin corregir'},
+    {kpi: 4, nombre: 'Platos a tiempo (≤ 20 min)', proceso: 'P3 · Preparación y entrega', unidad: '%', meta: 0.9, base: 0.783, margen: 0.05, resp: 'Jefe de cocina', frec: 'Diaria · hora de comanda y salida en POS', def: '% de platos principales servidos en 20 min o menos'},
+    {kpi: 5, nombre: 'Reclamos bien resueltos', proceso: 'P4 · Atención y solución de problemas', unidad: '%', meta: 0.9, base: 0.714, margen: 0.05, resp: 'Jefe de salón', frec: 'Mensual · evaluación al pagar y ALFA Resuelve', def: '% de reclamos cuya solución se califica con 4 o 5'},
+    {kpi: 6, nombre: 'NPS · Recomendación', proceso: 'P5 · Cierre y fidelización', unidad: 'pts', meta: 55, base: 46, margen: 5, resp: 'Administrador', frec: 'Mensual · evaluación al pagar', def: '% promotores (9-10) − % detractores (0-6)'},
+  ];
+  const MOZOS = ['Lucía', 'Diego', 'Valeria', 'Renzo', 'Camila'];
+  const PLATOS = ['Tomahawk nacional (700 g)', 'Picanha nacional (500 g)', 'Asado de tira (350 g)', 'Lomo fino nacional (220 g)', 'Bife ancho Angus USA (400 g)', 'Smoked brisket USA', 'Costillas ahumadas de cerdo', 'Costillón de res ahumado', 'Pollo cajún ahumado', 'Bandeja de altura', 'Lomo saltado', 'Signature', 'Familiar de res'];
+  const MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+  const $ = (id) => document.getElementById(id);
+  const num = (v, d) => v.toFixed(d).replace('.', ',');
+  const isN = (x) => typeof x === 'number' && !isNaN(x);
+  const fmtK = (k, v) => (v == null ? '—' : k.unidad === '%' ? num(v * 100, 1) + '%' : (v >= 0 ? '+' : '') + num(v, 0));
+  const mesLabel = (m) => MES[Number(m.slice(5, 7)) - 1] + '-' + m.slice(2, 4);
+
+  let rows = [];          // mesas
+  let docs = [];          // [{id, data}]
+  let loaded = false;
+  const state = {per: 'Todos', tur: 'Todos', pun: 'Todos', kpi: 1, tab: 'tablero'};
+  try { const t = localStorage.getItem('alfa-tab'); if (t) state.tab = t; } catch (e) {}
+
+  // ---------- cálculo de KPIs ----------
+  const cnt = (rs, f) => rs.reduce((a, r) => a + (f(r) ? 1 : 0), 0);
+  const pct = (a, b) => (b ? a / b : null);
+  const VAL = {
+    1: (rs) => pct(cnt(rs, (r) => isN(r.acceso) && r.acceso >= 4), cnt(rs, (r) => isN(r.acceso) && r.acceso >= 1)),
+    2: (rs) => pct(cnt(rs, (r) => r.plato_disponible === 'Sí'), cnt(rs, (r) => r.plato_disponible === 'Sí' || r.plato_disponible === 'No')),
+    3: (rs) => pct(cnt(rs, (r) => r.pedido_perfecto === 'Sí'), cnt(rs, (r) => r.pedido_perfecto === 'Sí' || r.pedido_perfecto === 'No')),
+    4: (rs) => pct(cnt(rs, (r) => isN(r.min_servir) && r.min_servir > 0 && r.min_servir <= 20), cnt(rs, (r) => isN(r.min_servir) && r.min_servir > 0)),
+    5: (rs) => pct(cnt(rs, (r) => r.reclamo === 'Sí' && isN(r.sat_solucion) && r.sat_solucion >= 4), cnt(rs, (r) => r.reclamo === 'Sí' && isN(r.sat_solucion) && r.sat_solucion >= 1)),
+    6: (rs) => { const n = cnt(rs, (r) => isN(r.recomienda)); return n ? (cnt(rs, (r) => isN(r.recomienda) && r.recomienda >= 9) - cnt(rs, (r) => isN(r.recomienda) && r.recomienda <= 6)) / n * 100 : null; },
+  };
+  const estadoDe = (k, v) => {
+    if (v == null) return {est: 'SIN DATOS', cls: 'none', txt: 'sin registros en este filtro'};
+    const esc = k.unidad === '%' ? 100 : 1, gap = (k.meta - v) * esc;
+    if (v >= k.meta - 1e-9) return {est: 'EN META', cls: 'ok', txt: '+' + num(-gap, 1) + ' pts sobre la meta'};
+    if (gap < k.margen * esc - 1e-9) return {est: 'CERCA', cls: 'warn', txt: 'faltan ' + num(gap, 1) + ' pts'};
+    return {est: 'BAJO META', cls: 'bad', txt: 'faltan ' + num(gap, 1) + ' pts'};
+  };
+  const filt = (o) => rows.filter((r) => (o.per === 'Todos' || r.mes === o.per) && (o.tur === 'Todos' || r.turno === o.tur) && (o.pun === 'Todos' || r.hora_punta === o.pun));
+
+  // ---------- UI helpers ----------
+  const tipOf = (box) => { let t = box.querySelector('.tip'); if (!t) { t = document.createElement('div'); t.className = 'tip'; t.hidden = true; box.append(t); } return t; };
+  const showTip = (box, x, y, lines) => {
+    const t = tipOf(box);
+    t.replaceChildren(...lines.map((l, i) => { const d = document.createElement('div'); if (i === 0) d.className = 't1'; d.textContent = l; return d; }));
+    t.hidden = false;
+    const w = box.clientWidth, tw = t.offsetWidth;
+    t.style.left = Math.max(0, Math.min(w - tw, x - tw / 2)) + 'px';
+    t.style.top = Math.max(0, y - t.offsetHeight - 10) + 'px';
+  };
+  const hideTip = (box) => { const t = box.querySelector('.tip'); if (t) t.hidden = true; };
+  const emptyBox = (box, text) => { box.replaceChildren(); const d = document.createElement('div'); d.className = 'empty'; d.textContent = text; box.append(d); };
+  const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ---------- render ----------
+  function renderAll() {
+    const per = [...new Set(rows.map((r) => r.mes))].sort();
+    const fPer = $('fPer');
+    const keep = state.per;
+    fPer.replaceChildren(new Option('Todo el periodo', 'Todos'), ...per.map((m) => new Option(mesLabel(m), m)));
+    if (keep !== 'Todos' && !per.includes(keep)) state.per = 'Todos';
+    fPer.value = state.per; $('fTur').value = state.tur; $('fPun').value = state.pun;
+
+    const sim = rows.filter((r) => r.simulado).length;
+    $('simBadge').hidden = !sim;
+    $('simBadge').textContent = sim === rows.length ? 'Datos simulados de ejemplo' : 'Incluye ' + sim + ' mesas simuladas';
+
+    const rs = filt(state);
+    $('nMesas').textContent = rs.length + ' mesas en este filtro';
+    const res = KPIS.map((k) => { const v = VAL[k.kpi](rs); return {k, v, e: estadoDe(k, v)}; });
+    renderTake(res, rs);
+    renderCards(res);
+    renderTrend(per);
+    renderPunta();
+    renderQuiebres(rs);
+    renderReclamos(rs);
+    renderNps(rs);
+    renderMozos(rs);
+    renderLast();
+    renderFicha();
+  }
+
+  function renderTake(res, rs) {
+    const p = $('take');
+    if (!loaded) { p.textContent = 'Cargando las mesas registradas…'; return; }
+    if (!rows.length) { p.textContent = 'Aún no hay mesas registradas. Registra la primera en «Registrar mesas» o importa el Excel.'; return; }
+    const c = (e) => res.filter((r) => r.e.est === e).length;
+    const pend = res.filter((r) => r.v != null && r.e.est !== 'EN META').sort((a, b) => a.v / a.k.meta - b.v / b.k.meta)[0];
+    const b = (t) => { const x = document.createElement('b'); x.textContent = t; return x; };
+    p.replaceChildren('De 6 KPIs: ', b(String(c('EN META'))), ' en meta, ', b(String(c('CERCA'))), ' cerca y ', b(String(c('BAJO META'))), ' bajo meta. ',
+      ...(pend ? ['Prioridad: ', b(pend.k.nombre), ' (va en ' + Math.round(pend.v / pend.k.meta * 100) + '% de su meta).'] : ['Todos los KPIs con datos están en meta.']));
+  }
+
+  function renderCards(res) {
+    const box = $('cards');
+    box.replaceChildren(...res.map(({k, v, e}) => {
+      const c = document.createElement('button'); c.type = 'button'; c.className = 'card'; c.setAttribute('aria-pressed', String(k.kpi === state.kpi));
+      const mk = (cls, t, tag = 'span') => { const x = document.createElement(tag); x.className = cls; x.textContent = t; return x; };
+      const chip = mk('chip s-' + e.cls, ''); chip.append(document.createElement('i'), document.createTextNode(e.est));
+      const tr = mk('track', ''); const fi = mk('fill f-' + e.cls, ''); fi.style.width = (v == null ? 0 : Math.min(1, v / k.meta) * 100) + '%'; tr.append(fi);
+      c.append(mk('proc', k.proceso), mk('name', k.nombre), mk('val', fmtK(k, v)), chip, mk('small', e.txt), tr, mk('small', 'Meta ≥ ' + fmtK(k, k.meta) + ' · Inicio: ' + fmtK(k, k.base)));
+      c.addEventListener('click', () => { state.kpi = k.kpi; renderAll(); });
+      return c;
+    }));
+  }
+
+  function renderTrend(per) {
+    const box = $('trend'); const k = KPIS.find((x) => x.kpi === state.kpi);
+    $('trendTitle').textContent = 'Evolución mensual · ' + k.nombre;
+    if (!per.length) { emptyBox(box, 'Sin mesas registradas todavía.'); return; }
+    const esc = k.unidad === '%' ? 100 : 1;
+    const pts = per.map((m) => { const v = VAL[k.kpi](filt({per: m, tur: state.tur, pun: state.pun})); return {m, label: mesLabel(m), v: v == null ? null : v * esc, raw: v}; });
+    const W = Math.max(320, box.clientWidth || 600), H = 260, mg = {t: 14, r: 86, b: 28, l: 46};
+    const ys = pts.filter((p) => p.v != null).map((p) => p.v).concat([k.meta * esc, k.base * esc]);
+    let lo = Math.floor((d3.min(ys) - 5) / 5) * 5, hi = Math.ceil((d3.max(ys) + 3) / 5) * 5;
+    if (esc === 100) { lo = Math.max(0, lo); hi = Math.min(100, hi); } else { lo = Math.max(-100, lo); hi = Math.min(100, hi); }
+    const x = d3.scalePoint(pts.map((p) => p.label), [mg.l, W - mg.r]).padding(0.35);
+    const y = d3.scaleLinear([lo, hi], [H - mg.b, mg.t]);
+    const tick = (v) => (esc === 100 ? v + '%' : (v > 0 ? '+' : '') + v);
+    box.replaceChildren();
+    const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Evolución mensual de ' + k.nombre);
+    const yt = y.ticks(5);
+    svg.append('g').selectAll('line').data(yt).join('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--line)');
+    svg.append('g').selectAll('text').data(yt).join('text').attr('x', mg.l - 8).attr('y', (d) => y(d) + 4).attr('text-anchor', 'end').attr('fill', 'var(--muted)').attr('font-size', 11).text(tick);
+    const step = W < 480 && pts.length > 6 ? 2 : 1;
+    svg.append('g').selectAll('text').data(pts.filter((p, i) => i % step === 0)).join('text').attr('x', (d) => x(d.label)).attr('y', H - 8).attr('text-anchor', 'middle').attr('fill', 'var(--muted)').attr('font-size', 11).text((d) => d.label);
+    const ref = (v, dsh, col, label, dy) => {
+      svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', col).attr('stroke-width', 1.5).attr('stroke-dasharray', dsh);
+      if (label) svg.append('text').attr('x', W - mg.r + 6).attr('y', y(v) + 4 + dy).attr('fill', col).attr('font-size', 11).attr('font-weight', 600).text(label);
+    };
+    const yM = y(k.meta * esc), yB = y(k.base * esc), close = Math.abs(yM - yB) < 14;
+    ref(k.meta * esc, '6 4', 'var(--ink)', 'Meta ' + tick(k.meta * esc), close && yM > yB ? 7 : close ? -7 : 0);
+    ref(k.base * esc, '2 3', 'var(--muted)', 'Inicio ' + (esc === 100 ? num(k.base * 100, 1) + '%' : tick(k.base)), close && yB > yM ? 7 : close ? -7 : 0);
+    const def = pts.filter((p) => p.v != null);
+    svg.append('path').datum(def).attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 2.5).attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round').attr('d', d3.line().x((d) => x(d.label)).y((d) => y(d.v)));
+    const colOf = (raw) => 'var(--' + {ok: 'ok', warn: 'warn', bad: 'bad', none: 'muted'}[estadoDe(k, raw).cls] + ')';
+    svg.append('g').selectAll('circle').data(def).join('circle').attr('cx', (d) => x(d.label)).attr('cy', (d) => y(d.v)).attr('r', 6).attr('fill', (d) => colOf(d.raw)).attr('stroke', 'var(--panel)').attr('stroke-width', 2).style('cursor', 'pointer')
+      .on('pointerenter', (ev, d) => { const s = box.clientWidth / W; showTip(box, x(d.label) * s, y(d.v) * s, [d.label, k.nombre + ': ' + fmtK(k, d.raw), estadoDe(k, d.raw).est.toLowerCase() + ' · ' + filt({per: d.m, tur: state.tur, pun: state.pun}).length + ' mesas']); })
+      .on('pointerleave', () => hideTip(box));
+    svg.append('g').selectAll('text').data(def).join('text').attr('x', (d) => x(d.label)).attr('y', (d) => y(d.v) - 11).attr('text-anchor', 'middle').attr('font-size', 11).attr('font-weight', 600).attr('fill', 'var(--ink)').text((d) => (esc === 100 ? Math.round(d.v) + '%' : tick(Math.round(d.v))));
+  }
+
+  function hbars(box, data, max) {
+    if (!data.length) { emptyBox(box, 'Sin datos en este filtro.'); return; }
+    const W = Math.max(300, box.clientWidth || 400), rowH = 26;
+    box.replaceChildren();
+    const svg = d3.select(box).append('svg').attr('role', 'img');
+    const probe = svg.append('g');
+    let lw = 0; data.forEach((d) => { const t = probe.append('text').attr('font-size', 12).text(d.label); lw = Math.max(lw, t.node().getComputedTextLength()); }); probe.remove();
+    const l = Math.min(lw + 12, W * 0.45), H = data.length * rowH + 4;
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+    const x = d3.scaleLinear([0, max], [l, W - 56]);
+    const g = svg.selectAll('g.r').data(data).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${2 + i * rowH})`).style('cursor', 'default');
+    g.append('text').attr('x', l - 8).attr('y', rowH / 2 + 4).attr('text-anchor', 'end').attr('font-size', 12).attr('fill', 'var(--ink)').text((d) => d.label);
+    g.append('rect').attr('x', l).attr('y', 5).attr('height', rowH - 10).attr('rx', 3).attr('width', (d) => Math.max(0, x(d.v) - l)).attr('fill', (d) => d.color);
+    g.append('text').attr('x', (d) => x(d.v) + 6).attr('y', rowH / 2 + 4).attr('font-size', 12).attr('fill', 'var(--muted)').text((d) => d.txt);
+    g.append('rect').attr('x', 0).attr('y', 0).attr('width', W).attr('height', rowH).attr('fill', 'transparent')
+      .on('pointerenter', (ev, d) => { const i = data.indexOf(d), s = box.clientWidth / W; showTip(box, x(d.v) * s, (2 + i * rowH + 4) * s, d.tip); })
+      .on('pointerleave', () => hideTip(box));
+  }
+
+  function renderQuiebres(rs) {
+    const g = d3.rollups(rs, (v) => ({sin: v.filter((r) => r.plato_disponible === 'No').length, n: v.length}), (r) => r.plato)
+      .map(([plato, o]) => ({plato, ...o})).sort((a, b) => b.sin - a.sin || b.n - a.n);
+    const top = g.length ? g[0].sin : 0;
+    hbars($('quiebres'), g.map((d) => ({label: d.plato, v: d.sin, txt: String(d.sin), color: d.sin === top && top > 0 ? 'var(--bad)' : d.sin > 0 ? 'var(--accent)' : 'var(--muted-bar)', tip: [d.plato, d.sin + ' de ' + d.n + ' pedidos sin stock']})), Math.max(1, top));
+  }
+
+  function renderMozos(rs) {
+    const g = d3.rollups(rs.filter((r) => isN(r.recomienda)), (v) => ({p: d3.mean(v, (r) => r.recomienda), n: v.length}), (r) => r.mozo)
+      .map(([mozo, o]) => ({mozo, ...o})).sort((a, b) => b.p - a.p);
+    const best = g.length ? g[0].p : null;
+    hbars($('mozos'), g.map((d) => ({label: d.mozo, v: d.p, txt: num(d.p, 1), color: d.p === best ? 'var(--accent)' : 'var(--muted-bar)', tip: [d.mozo, 'Recomendación: ' + num(d.p, 1) + ' de 10', d.n + ' mesas']})), 10);
+  }
+
+  function renderPunta() {
+    const box = $('punta');
+    const base = {per: state.per, tur: state.tur};
+    const sets = {'Hora punta': filt({...base, pun: 'Sí'}), 'Resto del día': filt({...base, pun: 'No'})};
+    if (!sets['Hora punta'].length && !sets['Resto del día'].length) { emptyBox(box, 'Sin datos en este filtro.'); return; }
+    const metrics = [['Platos a tiempo (≤ 20 min)', 4], ['Pedido perfecto', 3], ['Platos disponibles', 2]];
+    const W = Math.max(300, box.clientWidth || 400), H = 210, mg = {t: 18, r: 8, b: 30, l: 8};
+    box.replaceChildren();
+    const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img');
+    const x0 = d3.scaleBand(metrics.map((d) => d[0]), [mg.l, W - mg.r]).paddingInner(0.25).paddingOuter(0.05);
+    const x1 = d3.scaleBand(Object.keys(sets), [0, x0.bandwidth()]).padding(0.12);
+    const y = d3.scaleLinear([0, 1], [H - mg.b, mg.t]);
+    const col = {'Hora punta': 'var(--accent)', 'Resto del día': 'var(--series2)'};
+    for (const [name, kid] of metrics) {
+      const gg = svg.append('g').attr('transform', `translate(${x0(name)},0)`);
+      for (const mo of Object.keys(sets)) {
+        const v = VAL[kid](sets[mo]); if (v == null) continue;
+        const bw = Math.min(34, x1.bandwidth()), bx = x1(mo) + (x1.bandwidth() - bw) / 2;
+        gg.append('rect').attr('x', bx).attr('y', y(v)).attr('width', bw).attr('height', y(0) - y(v)).attr('rx', 3).attr('fill', col[mo])
+          .on('pointerenter', () => { const s = box.clientWidth / W; showTip(box, (x0(name) + bx + bw / 2) * s, y(v) * s, [mo, name + ': ' + num(v * 100, 1) + '%', sets[mo].length + ' mesas']); })
+          .on('pointerleave', () => hideTip(box));
+        gg.append('text').attr('x', bx + bw / 2).attr('y', y(v) - 5).attr('text-anchor', 'middle').attr('font-size', 11).attr('font-weight', 600).attr('fill', 'var(--ink)').text(Math.round(v * 100) + '%');
+      }
+      const lab = svg.append('text').attr('x', x0(name) + x0.bandwidth() / 2).attr('y', H - 10).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--muted)').text(name);
+      if (lab.node().getComputedTextLength() > x0.bandwidth()) lab.text(name.replace(' (≤ 20 min)', ''));
+    }
+    svg.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', 'var(--muted)');
+  }
+
+  function renderReclamos(rs) {
+    const rec = rs.filter((r) => r.reclamo === 'Sí');
+    const mins = rec.map((r) => r.min_resolver).filter(isN);
+    $('rPct').textContent = rs.length ? num(rec.length / rs.length * 100, 1) + '%' : '—';
+    $('rN').textContent = rs.length ? String(rec.length) : '—';
+    $('rMin').textContent = mins.length ? num(d3.mean(mins), 1) + ' min' : '—';
+    $('r10').textContent = mins.length ? Math.round(mins.filter((m) => m <= 10).length / mins.length * 100) + '%' : '—';
+  }
+
+  function renderNps(rs) {
+    const box = $('nps');
+    const v = rs.filter((r) => isN(r.recomienda));
+    if (!v.length) { emptyBox(box, 'Sin respuestas en este filtro.'); return; }
+    const gr = [['Promotores', (x) => x >= 9, 'var(--ok)'], ['Pasivos', (x) => x >= 7 && x <= 8, 'var(--muted-bar)'], ['Detractores', (x) => x <= 6, 'var(--bad)']]
+      .map(([n, f, c]) => { const k = v.filter((r) => f(r.recomienda)).length; return {n, k, p: k / v.length, c}; });
+    const nps = (gr[0].p - gr[2].p) * 100;
+    const W = Math.max(300, box.clientWidth || 400), narrow = W < 420, H = narrow ? 120 : 84;
+    box.replaceChildren();
+    const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img');
+    svg.append('text').attr('x', 0).attr('y', 22).attr('font-family', 'var(--display)').attr('font-size', 24).attr('font-weight', 800).attr('fill', 'var(--ink)').text('NPS ' + (nps >= 0 ? '+' : '') + Math.round(nps));
+    const x = d3.scaleLinear([0, 1], [0, W]); let acc = 0;
+    gr.forEach((g) => {
+      const x0 = x(acc), w = x(g.p) - x(0); acc += g.p;
+      svg.append('rect').attr('x', x0).attr('y', 34).attr('width', Math.max(0, w - 2)).attr('height', 18).attr('rx', 3).attr('fill', g.c)
+        .on('pointerenter', () => { const s = box.clientWidth / W; showTip(box, (x0 + w / 2) * s, 34 * s, [g.n, g.k + ' clientes · ' + num(g.p * 100, 1) + '%']); })
+        .on('pointerleave', () => hideTip(box));
+    });
+    let lx = 0;
+    gr.forEach((g, i) => {
+      const yy = narrow ? 72 + i * 16 : 74, xx = narrow ? 0 : lx;
+      svg.append('rect').attr('x', xx).attr('y', yy - 9).attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', g.c);
+      const t = svg.append('text').attr('x', xx + 14).attr('y', yy).attr('font-size', 12).attr('fill', 'var(--muted)').text(g.n + ' ' + Math.round(g.p * 100) + '% (' + g.k + ')');
+      lx += 14 + t.node().getComputedTextLength() + 18;
+    });
+  }
+
+  let canDelete = false, dbRef = null;
+  function renderLast() {
+    const tb = $('lastRows');
+    const last = docs.slice().sort((a, b) => (b.data.fecha || '').localeCompare(a.data.fecha || '') || (b.data.creado || '').localeCompare(a.data.creado || '')).slice(0, 15);
+    if (!last.length) { tb.replaceChildren(); const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 10; td.className = 'empty'; td.textContent = loaded ? 'Todavía no hay mesas.' : 'Cargando…'; tr.append(td); tb.append(tr); }
+    else tb.replaceChildren(...last.map((d) => { const {id, data: r} = d;
+      const tr = document.createElement('tr');
+      const fecha = r.fecha ? r.fecha.slice(8, 10) + '/' + r.fecha.slice(5, 7) + '/' + r.fecha.slice(0, 4) : '—';
+      [fecha, r.turno, r.mozo, r.plato, isN(r.min_servir) ? String(r.min_servir) : '—', r.pedido_perfecto, r.reclamo, isN(r.recomienda) ? String(r.recomienda) : '—', r.simulado ? 'Simulada' : d.origen === 'conecta' ? 'ALFA Conecta' : 'Registrada'].forEach((v, i) => { const td = document.createElement('td'); if (i === 4 || i === 7) td.className = 'num'; td.textContent = v ?? '—'; tr.append(td); });
+      const td = document.createElement('td');
+      if (canDelete && d.origen !== 'conecta') { const b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.textContent = 'Quitar'; b.setAttribute('aria-label', 'Quitar mesa del ' + fecha);
+        b.addEventListener('click', async () => { b.disabled = true; try { await dbRef.collection('historial').doc(id).delete(); } catch (e) { b.disabled = false; } }); td.append(b); }
+      tr.append(td); return tr;
+    }));
+    const sim = docs.filter((d) => d.data.simulado).length;
+    $('simTools').hidden = !(canDelete && sim);
+    $('simLoad').hidden = !(canDelete && !sim && loaded);
+    $('simCount').textContent = String(sim);
+  }
+
+  function renderFicha() {
+    const tb = $('ficha');
+    if (!tb || tb.childElementCount) return;
+    tb.replaceChildren(...KPIS.map((k) => { const tr = document.createElement('tr'); [String(k.kpi), k.nombre, k.proceso, k.def, fmtK(k, k.base), '≥ ' + fmtK(k, k.meta), k.resp, k.frec].forEach((v) => { const td = document.createElement('td'); td.textContent = v; tr.append(td); }); return tr; }));
+  }
+
+  // ---------- pestañas y filtros ----------
+  const tabs = ['diagnostico', 'procesos', 'ficha', 'tablero', 'uso', 'registro'];
+  const showTab = (t) => {
+    state.tab = t; try { localStorage.setItem('alfa-tab', t); } catch (e) {}
+    tabs.forEach((x) => { $('tab-' + x).setAttribute('aria-selected', String(x === t)); $('p-' + x).hidden = x !== t; });
+    if (t === 'tablero') renderAll();
+  };
+  tabs.forEach((x) => $('tab-' + x).addEventListener('click', () => showTab(x)));
+  $('fPer').addEventListener('change', (e) => { state.per = e.target.value; renderAll(); });
+  $('fTur').addEventListener('change', (e) => { state.tur = e.target.value; renderAll(); });
+  $('fPun').addEventListener('change', (e) => { state.pun = e.target.value; renderAll(); });
+  $('fReset').addEventListener('click', () => { Object.assign(state, {per: 'Todos', tur: 'Todos', pun: 'Todos'}); renderAll(); });
+  let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => { if (state.tab === 'tablero') renderAll(); }, 120); }).observe($('p-tablero'));
+
+  // ---------- formulario ----------
+  $('mMozo').replaceChildren(...MOZOS.map((m) => new Option(m)));
+  $('mPlato').replaceChildren(...PLATOS.map((m) => new Option(m)));
+  const today = new Date(); $('mFecha').value = today.toISOString().slice(0, 10);
+  const autoPunta = () => {
+    const f = $('mFecha').value; if (!f) return;
+    const d = new Date(f + 'T12:00:00').getDay(), t = $('mTurno').value;
+    const p = ((d === 5 || d === 6) && t === 'Cena') || (d === 0 && t === 'Almuerzo');
+    $('mPunta').value = p ? 'Sí' : 'No'; $('mPuntaHint').textContent = '(sugerida por día y turno)';
+  };
+  $('mFecha').addEventListener('change', autoPunta); $('mTurno').addEventListener('change', autoPunta); autoPunta();
+  $('mRec').addEventListener('change', () => { const s = $('mRec').value === 'Sí'; $('lMinRes').hidden = !s; $('lSat').hidden = !s; });
+  const nOrNull = (v) => (v === '' || v == null ? null : Number(v));
+
+  // ---------- CSV ----------
+  let csvRows = [];
+  const parseDate = (s) => {
+    s = String(s || '').trim(); let m;
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + '-' + m[2] + '-' + m[3];
+    if ((m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); }
+    return null;
+  };
+  const splitCsv = (line, sep) => { const out = []; let cur = '', q = false; for (const ch of line) { if (ch === '"') q = !q; else if (ch === sep && !q) { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out.map((s) => s.trim()); };
+  const yn = (s) => { s = String(s || '').trim().toLowerCase(); return s.startsWith('s') ? 'Sí' : s.startsWith('n') ? 'No' : null; };
+  $('csvFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; csvRows = []; $('csvGo').disabled = true; $('csvMsg').className = 'msg'; $('csvMsg').textContent = '';
+    if (!f) return;
+    const text = (await f.text()).replace(/^﻿/, '');
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    const sep = (lines.slice(0, 6).join('').match(/;/g) || []).length > (lines.slice(0, 6).join('').match(/,/g) || []).length ? ';' : ',';
+    for (const l of lines) {
+      const c = splitCsv(l, sep); const fecha = parseDate(c[1]); if (!fecha) continue;
+      const num2 = (s) => { const v = String(s || '').replace(',', '.').trim(); return v === '' ? null : Number(v); };
+      csvRows.push({fecha, mes: fecha.slice(0, 7), turno: /cen/i.test(c[2]) ? 'Cena' : 'Almuerzo', hora_punta: yn(c[3]) || 'No', mozo: c[4] || '—', plato: c[5] || '—', plato_disponible: yn(c[6]), min_servir: num2(c[7]), pedido_perfecto: yn(c[8]), reclamo: yn(c[9]) || 'No', min_resolver: num2(c[10]), sat_solucion: num2(c[11]), acceso: num2(c[12]), recomienda: num2(c[13]), simulado: false});
+    }
+    if (csvRows.length) { $('csvMsg').textContent = csvRows.length + ' mesas encontradas, listas para importar.'; $('csvGo').disabled = !dbRef; }
+    else { $('csvMsg').className = 'msg err'; $('csvMsg').textContent = 'No encontré filas con fecha. Revisa que sea la hoja «Datos» guardada como CSV.'; }
+  });
+
+  // ---------- conexión a la base (Firebase) ----------
+  const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD-dU0aWXXThgRiGXptZovtV6hS4MHU3Rk",
+  authDomain: "alfa-conecta-f96c5.firebaseapp.com",
+  projectId: "alfa-conecta-f96c5",
+  storageBucket: "alfa-conecta-f96c5.firebasestorage.app",
+  messagingSenderId: "794650303984",
+  appId: "1:794650303984:web:21d76658bf9e94db97d135"
+};
+  const SIM = [{"fecha":"2026-11-01","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2026-11-04","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Asado de tira","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2026-11-05","mes":"2026-11","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2026-11-06","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2026-11-06","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2026-11-07","mes":"2026-11","turno":"Almuerzo","hora_punta":"No","mozo":"Valeria","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2026-11-08","mes":"2026-11","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Ossobuco","plato_disponible":"Sí","min_servir":35,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":6,"sat_solucion":5,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2026-11-10","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":8,"sat_solucion":4,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2026-11-12","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":23,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2026-11-13","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":28,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":8,"sat_solucion":5,"acceso":4,"recomienda":8,"simulado":true},{"fecha":"2026-11-13","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2026-11-13","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":34,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":16,"sat_solucion":3,"acceso":2,"recomienda":4,"simulado":true},{"fecha":"2026-11-13","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"No","min_servir":15,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":8,"sat_solucion":4,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2026-11-14","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":45,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":6,"sat_solucion":5,"acceso":3,"recomienda":5,"simulado":true},{"fecha":"2026-11-15","mes":"2026-11","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Asado de tira","plato_disponible":"Sí","min_servir":26,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2026-11-15","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":1,"recomienda":7,"simulado":true},{"fecha":"2026-11-18","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"Smoke short ribs","plato_disponible":"No","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":9,"simulado":true},{"fecha":"2026-11-20","mes":"2026-11","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":10,"simulado":true},{"fecha":"2026-11-20","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Asado de tira","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-11-21","mes":"2026-11","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-11-21","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"No","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":9,"simulado":true},{"fecha":"2026-11-22","mes":"2026-11","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":1,"recomienda":10,"simulado":true},{"fecha":"2026-11-22","mes":"2026-11","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":16,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":18,"sat_solucion":3,"acceso":5,"recomienda":4,"simulado":true},{"fecha":"2026-11-22","mes":"2026-11","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":7,"simulado":true},{"fecha":"2026-11-23","mes":"2026-11","turno":"Almuerzo","hora_punta":"No","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2026-11-25","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Asado de tira","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2026-11-25","mes":"2026-11","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-11-27","mes":"2026-11","turno":"Almuerzo","hora_punta":"No","mozo":"Camila","plato":"Smoke short ribs","plato_disponible":"No","min_servir":14,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":4,"sat_solucion":5,"acceso":4,"recomienda":8,"simulado":true},{"fecha":"2026-11-27","mes":"2026-11","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2026-11-29","mes":"2026-11","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-12-01","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Ossobuco","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-12-01","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2026-12-04","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":41,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":15,"sat_solucion":2,"acceso":3,"recomienda":4,"simulado":true},{"fecha":"2026-12-04","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Asado de tira","plato_disponible":"Sí","min_servir":27,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-12-05","mes":"2026-12","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2026-12-06","mes":"2026-12","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2026-12-06","mes":"2026-12","turno":"Almuerzo","hora_punta":"Sí","mozo":"Diego","plato":"Smoke short ribs","plato_disponible":"No","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":1,"recomienda":10,"simulado":true},{"fecha":"2026-12-12","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":10,"simulado":true},{"fecha":"2026-12-12","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2026-12-13","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2026-12-13","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Picanha Angus","plato_disponible":"No","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":1,"recomienda":7,"simulado":true},{"fecha":"2026-12-13","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2026-12-16","mes":"2026-12","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":8,"simulado":true},{"fecha":"2026-12-17","mes":"2026-12","turno":"Almuerzo","hora_punta":"No","mozo":"Camila","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2026-12-18","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2026-12-20","mes":"2026-12","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Asado de tira","plato_disponible":"Sí","min_servir":45,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":5,"sat_solucion":5,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2026-12-20","mes":"2026-12","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":37,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":5,"sat_solucion":4,"acceso":3,"recomienda":8,"simulado":true},{"fecha":"2026-12-20","mes":"2026-12","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":4,"sat_solucion":4,"acceso":2,"recomienda":7,"simulado":true},{"fecha":"2026-12-20","mes":"2026-12","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":20,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":15,"sat_solucion":2,"acceso":4,"recomienda":4,"simulado":true},{"fecha":"2026-12-20","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2026-12-25","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":8,"simulado":true},{"fecha":"2026-12-25","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":30,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2026-12-25","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Smoke short ribs","plato_disponible":"No","min_servir":18,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":7,"sat_solucion":5,"acceso":2,"recomienda":6,"simulado":true},{"fecha":"2026-12-26","mes":"2026-12","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":5,"sat_solucion":4,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2026-12-26","mes":"2026-12","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2026-12-26","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2026-12-26","mes":"2026-12","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":7,"sat_solucion":4,"acceso":3,"recomienda":7,"simulado":true},{"fecha":"2026-12-28","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Asado de tira","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2026-12-28","mes":"2026-12","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":8,"sat_solucion":5,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2026-12-31","mes":"2026-12","turno":"Almuerzo","hora_punta":"No","mozo":"Valeria","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-01-01","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":8,"sat_solucion":5,"acceso":2,"recomienda":8,"simulado":true},{"fecha":"2027-01-01","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"No","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-01-01","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":36,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":25,"sat_solucion":3,"acceso":3,"recomienda":5,"simulado":true},{"fecha":"2027-01-03","mes":"2027-01","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":1,"recomienda":9,"simulado":true},{"fecha":"2027-01-03","mes":"2027-01","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Ossobuco","plato_disponible":"Sí","min_servir":30,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-01-03","mes":"2027-01","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":34,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":10,"sat_solucion":5,"acceso":5,"recomienda":5,"simulado":true},{"fecha":"2027-01-04","mes":"2027-01","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-01-04","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Ossobuco","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-01-04","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-01-06","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2027-01-07","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2027-01-12","mes":"2027-01","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-01-13","mes":"2027-01","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-01-15","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Asado de tira","plato_disponible":"Sí","min_servir":31,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2027-01-15","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2027-01-16","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-01-17","mes":"2027-01","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Ossobuco","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":1,"recomienda":9,"simulado":true},{"fecha":"2027-01-17","mes":"2027-01","turno":"Almuerzo","hora_punta":"Sí","mozo":"Diego","plato":"Picanha Angus","plato_disponible":"No","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":7,"simulado":true},{"fecha":"2027-01-17","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-01-20","mes":"2027-01","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Ossobuco","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-01-23","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Diego","plato":"Asado de tira","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-01-23","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-01-24","mes":"2027-01","turno":"Almuerzo","hora_punta":"Sí","mozo":"Diego","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-01-24","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-01-25","mes":"2027-01","turno":"Almuerzo","hora_punta":"No","mozo":"Valeria","plato":"Asado de tira","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":7,"sat_solucion":5,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-01-26","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":17,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":9,"sat_solucion":4,"acceso":4,"recomienda":8,"simulado":true},{"fecha":"2027-01-26","mes":"2027-01","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"Asado de tira","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-01-27","mes":"2027-01","turno":"Almuerzo","hora_punta":"No","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":8,"simulado":true},{"fecha":"2027-01-29","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":37,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":9,"sat_solucion":5,"acceso":1,"recomienda":7,"simulado":true},{"fecha":"2027-01-30","mes":"2027-01","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2027-02-02","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-02-04","mes":"2027-02","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-02-06","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-02-06","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":45,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":10,"sat_solucion":4,"acceso":1,"recomienda":10,"simulado":true},{"fecha":"2027-02-07","mes":"2027-02","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":9,"simulado":true},{"fecha":"2027-02-07","mes":"2027-02","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2027-02-07","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-02-08","mes":"2027-02","turno":"Almuerzo","hora_punta":"No","mozo":"Valeria","plato":"Asado de tira","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2027-02-08","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":7,"sat_solucion":5,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2027-02-09","mes":"2027-02","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2027-02-11","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-02-12","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":20,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":8,"sat_solucion":5,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-02-14","mes":"2027-02","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"No","min_servir":24,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":10,"sat_solucion":4,"acceso":5,"recomienda":5,"simulado":true},{"fecha":"2027-02-14","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Ossobuco","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-02-16","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-02-17","mes":"2027-02","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-02-17","mes":"2027-02","turno":"Almuerzo","hora_punta":"No","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-02-17","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-02-20","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-02-20","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2027-02-21","mes":"2027-02","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2027-02-22","mes":"2027-02","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Ossobuco","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":4,"sat_solucion":4,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-02-23","mes":"2027-02","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":9,"simulado":true},{"fecha":"2027-02-26","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Diego","plato":"Picanha Angus","plato_disponible":"No","min_servir":17,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":19,"sat_solucion":3,"acceso":5,"recomienda":6,"simulado":true},{"fecha":"2027-02-27","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-02-27","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":6,"sat_solucion":4,"acceso":2,"recomienda":8,"simulado":true},{"fecha":"2027-02-27","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":38,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":6,"sat_solucion":4,"acceso":1,"recomienda":8,"simulado":true},{"fecha":"2027-02-27","mes":"2027-02","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2027-02-28","mes":"2027-02","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Ossobuco","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-02-28","mes":"2027-02","turno":"Almuerzo","hora_punta":"Sí","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":5,"sat_solucion":5,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-03-01","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Asado de tira","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-03-03","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2027-03-04","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":10,"sat_solucion":5,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-03-05","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"No","min_servir":31,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":9,"sat_solucion":4,"acceso":2,"recomienda":5,"simulado":true},{"fecha":"2027-03-06","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":10,"simulado":true},{"fecha":"2027-03-07","mes":"2027-03","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-03-07","mes":"2027-03","turno":"Almuerzo","hora_punta":"Sí","mozo":"Diego","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":10,"sat_solucion":5,"acceso":5,"recomienda":6,"simulado":true},{"fecha":"2027-03-10","mes":"2027-03","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-03-12","mes":"2027-03","turno":"Almuerzo","hora_punta":"No","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":9,"sat_solucion":5,"acceso":4,"recomienda":8,"simulado":true},{"fecha":"2027-03-12","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-03-12","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-03-12","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2027-03-14","mes":"2027-03","turno":"Almuerzo","hora_punta":"Sí","mozo":"Diego","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2027-03-15","mes":"2027-03","turno":"Almuerzo","hora_punta":"No","mozo":"Camila","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-03-18","mes":"2027-03","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Asado de tira","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-03-19","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":30,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":7,"simulado":true},{"fecha":"2027-03-19","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":5,"sat_solucion":4,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-03-20","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-03-20","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-03-21","mes":"2027-03","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":7,"simulado":true},{"fecha":"2027-03-21","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-03-22","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-03-23","mes":"2027-03","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":10,"simulado":true},{"fecha":"2027-03-23","mes":"2027-03","turno":"Almuerzo","hora_punta":"No","mozo":"Camila","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-03-23","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2027-03-24","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Valeria","plato":"Ossobuco","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-03-26","mes":"2027-03","turno":"Cena","hora_punta":"Sí","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2027-03-28","mes":"2027-03","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":29,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-03-28","mes":"2027-03","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":9,"simulado":true},{"fecha":"2027-03-31","mes":"2027-03","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Asado de tira","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":8,"simulado":true},{"fecha":"2027-04-03","mes":"2027-04","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"ALFA Burger","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-04-03","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":15,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-04","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-04-05","mes":"2027-04","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":7,"sat_solucion":5,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-04-05","mes":"2027-04","turno":"Almuerzo","hora_punta":"No","mozo":"Valeria","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":9,"simulado":true},{"fecha":"2027-04-07","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":10,"simulado":true},{"fecha":"2027-04-07","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"Ossobuco","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-04-10","mes":"2027-04","turno":"Almuerzo","hora_punta":"No","mozo":"Valeria","plato":"Entraña Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-10","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":32,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":7,"sat_solucion":4,"acceso":3,"recomienda":8,"simulado":true},{"fecha":"2027-04-11","mes":"2027-04","turno":"Almuerzo","hora_punta":"Sí","mozo":"Camila","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":16,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-11","mes":"2027-04","turno":"Almuerzo","hora_punta":"Sí","mozo":"Renzo","plato":"Asado de tira","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":10,"simulado":true},{"fecha":"2027-04-11","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Diego","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-04-13","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":9,"simulado":true},{"fecha":"2027-04-16","mes":"2027-04","turno":"Almuerzo","hora_punta":"No","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-04-16","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":8,"simulado":true},{"fecha":"2027-04-17","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Renzo","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":2,"recomienda":9,"simulado":true},{"fecha":"2027-04-17","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Lomo saltado ALFA","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":9,"simulado":true},{"fecha":"2027-04-17","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-04-18","mes":"2027-04","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Tomahawk ahumado","plato_disponible":"No","min_servir":18,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":9,"sat_solucion":4,"acceso":4,"recomienda":7,"simulado":true},{"fecha":"2027-04-18","mes":"2027-04","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Ossobuco","plato_disponible":"Sí","min_servir":27,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":3,"recomienda":7,"simulado":true},{"fecha":"2027-04-18","mes":"2027-04","turno":"Almuerzo","hora_punta":"Sí","mozo":"Valeria","plato":"Ossobuco","plato_disponible":"Sí","min_servir":13,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-04-22","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Bife ancho Angus","plato_disponible":"Sí","min_servir":12,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-23","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":10,"simulado":true},{"fecha":"2027-04-23","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Camila","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":24,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-23","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Lucía","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":14,"pedido_perfecto":"No","reclamo":"Sí","min_resolver":10,"sat_solucion":5,"acceso":4,"recomienda":6,"simulado":true},{"fecha":"2027-04-25","mes":"2027-04","turno":"Almuerzo","hora_punta":"Sí","mozo":"Lucía","plato":"Picanha Angus","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-28","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Camila","plato":"Asado de tira","plato_disponible":"Sí","min_servir":20,"pedido_perfecto":"Sí","reclamo":"Sí","min_resolver":6,"sat_solucion":5,"acceso":5,"recomienda":7,"simulado":true},{"fecha":"2027-04-28","mes":"2027-04","turno":"Cena","hora_punta":"No","mozo":"Renzo","plato":"Smoke short ribs","plato_disponible":"Sí","min_servir":18,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-29","mes":"2027-04","turno":"Almuerzo","hora_punta":"No","mozo":"Diego","plato":"Tomahawk ahumado","plato_disponible":"Sí","min_servir":17,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":5,"recomienda":10,"simulado":true},{"fecha":"2027-04-30","mes":"2027-04","turno":"Cena","hora_punta":"Sí","mozo":"Valeria","plato":"Picanha Angus","plato_disponible":"No","min_servir":19,"pedido_perfecto":"Sí","reclamo":"No","min_resolver":null,"sat_solucion":null,"acceso":4,"recomienda":8,"simulado":true}];
+  (async () => {
+    if (!(window.firebase && FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey)) { loaded = true; $('take').textContent = 'No se pudo cargar Firebase. Revisa tu conexión a internet.'; $('mSave').disabled = true; renderAll(); return; }
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const db = firebase.firestore(); db.settings({ignoreUndefinedProperties: true, merge: true});
+    const lg = $('login');
+    const entrar = async () => { const m = $('lg_msg'); m.className = 'msg'; m.textContent = 'Ingresando…';
+      try { await firebase.auth().signInWithEmailAndPassword($('lg_mail').value.trim(), $('lg_pass').value); m.textContent = ''; }
+      catch (e) { m.className = 'msg err'; m.textContent = /invalid|wrong|not-found|credential/.test(String(e && e.code)) ? 'Correo o contraseña incorrectos.' : /too-many/.test(String(e && e.code)) ? 'Demasiados intentos. Espera un momento.' : 'No se pudo ingresar. Revisa tu conexión.'; } };
+    $('lg_go').addEventListener('click', entrar);
+    $('loginf').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); entrar(); } });
+    $('logout').addEventListener('click', () => firebase.auth().signOut());
+    let started = false;
+    firebase.auth().onAuthStateChanged((u) => {
+      if (!u) { if (started) { location.reload(); return; } lg.hidden = false; $('logout').hidden = true; setTimeout(() => $('lg_mail').focus(), 50); return; }
+      lg.hidden = true; $('logout').hidden = false; if (started) return; started = true; iniciar(db);
+    });
+  })();
+  function iniciar(db) {
+    dbRef = db; canDelete = true;
+    let hist = [], con = [], gotH = false, gotC = false;
+    const mezclar = () => {
+      docs = [...hist, ...con];
+      rows = docs.map((d) => d.data).filter((r) => r && r.fecha && r.mes);
+      loaded = gotH && gotC; renderAll();
+    };
+    const fallo = () => { loaded = true; $('take').textContent = 'Se perdió la conexión con los datos. Recarga la página.'; renderAll(); };
+    db.collection('historial').onSnapshot((snap) => { hist = snap.docs.map((d) => ({id: d.id, data: d.data(), origen: 'historial'})); gotH = true; mezclar(); }, fallo);
+    db.collection('registros').onSnapshot((snap) => { con = snap.docs.map((d) => ({id: d.id, data: d.data(), origen: 'conecta'})).filter((d) => !d.data.simulado); gotC = true; mezclar(); }, fallo);
+
+    $('simAdd').addEventListener('click', async () => {
+      const m = $('simMsg'); $('simAdd').disabled = true; m.className = 'msg'; m.textContent = 'Cargando…';
+      try { for (let i = 0; i < SIM.length; i += 400) { const b = db.batch(); SIM.slice(i, i + 400).forEach((r) => b.set(db.collection('historial').doc(), {...r, simulado: true, creado: new Date().toISOString()})); await b.commit(); } m.className = 'msg ok'; m.textContent = '180 mesas simuladas cargadas.'; }
+      catch (e) { m.className = 'msg err'; m.textContent = 'No se pudieron cargar.'; }
+      $('simAdd').disabled = false;
+    });
+    $('mSave').addEventListener('click', async () => {
+      const msg = $('mMsg'); msg.className = 'msg';
+      const fecha = $('mFecha').value;
+      if (!fecha) { msg.className = 'msg err'; msg.textContent = 'Falta la fecha.'; return; }
+      const rec = $('mRec').value;
+      const r = {fecha, mes: fecha.slice(0, 7), turno: $('mTurno').value, hora_punta: $('mPunta').value, mozo: $('mMozo').value, plato: $('mPlato').value,
+        plato_disponible: $('mDisp').value, min_servir: nOrNull($('mMin').value), pedido_perfecto: $('mPerf').value, reclamo: rec,
+        min_resolver: rec === 'Sí' ? nOrNull($('mMinRes').value) : null, sat_solucion: rec === 'Sí' ? nOrNull($('mSat').value) : null,
+        acceso: nOrNull($('mAcc').value), recomienda: nOrNull($('mRecom').value), simulado: false, creado: new Date().toISOString()};
+      $('mSave').disabled = true; msg.textContent = 'Guardando…';
+      try { await db.collection('historial').add(r); msg.className = 'msg ok'; msg.textContent = 'Mesa registrada. El tablero ya la incluye.'; ['mMin', 'mMinRes'].forEach((i) => { $(i).value = ''; }); $('mSat').value = ''; $('mAcc').value = ''; $('mRecom').value = ''; }
+      catch (e) { msg.className = 'msg err'; msg.textContent = e && e.code === 'quota_exceeded' ? 'La base llegó a su límite de mesas. Borra mesas antiguas o simuladas.' : 'No se pudo guardar. Revisa tu acceso e inténtalo de nuevo.'; }
+      $('mSave').disabled = false;
+    });
+
+    $('csvGo').addEventListener('click', async () => {
+      const msg = $('csvMsg'); $('csvGo').disabled = true; let ok = 0;
+      for (const r of csvRows) { try { await db.collection('historial').add({...r, creado: new Date().toISOString()}); ok++; msg.className = 'msg'; msg.textContent = 'Importando ' + ok + ' de ' + csvRows.length + '…'; } catch (e) { msg.className = 'msg err'; msg.textContent = 'Se importaron ' + ok + ' mesas; el resto falló. Revisa tu acceso.'; return; } }
+      msg.className = 'msg ok'; msg.textContent = ok + ' mesas importadas.'; csvRows = [];
+    });
+
+    $('simDel').addEventListener('click', () => { $('simConfirm').hidden = false; });
+    $('simNo').addEventListener('click', () => { $('simConfirm').hidden = true; });
+    $('simYes').addEventListener('click', async () => {
+      $('simYes').disabled = true;
+      const ids = docs.filter((d) => d.data.simulado && d.origen === 'historial').map((d) => d.id);
+      try { for (let i = 0; i < ids.length; i += 400) { const b = db.batch(); ids.slice(i, i + 400).forEach((id) => b.delete(db.collection('historial').doc(id))); await b.commit(); } } catch (e) {}
+      $('simYes').disabled = false; $('simConfirm').hidden = true;
+    });
+  }
+
+  showTab(tabs.includes(state.tab) ? state.tab : 'tablero');
+})();
+</script>
+</body></html>
