@@ -228,7 +228,14 @@ details[open]>summary.btn{background:var(--brand);color:var(--brand-ink)}
 /* ===================== CONFIGURACIÓN DE FIREBASE =====================
    Pega aquí el bloque firebaseConfig de tu proyecto (Configuración del proyecto → Tus apps → Web).
    Si queda en null, el sistema abre en modo demostración (los datos no se guardan). */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD-dU0aWXXThgRiGXptZovtV6hS4MHU3Rk",
+  authDomain: "alfa-conecta-f96c5.firebaseapp.com",
+  projectId: "alfa-conecta-f96c5",
+  storageBucket: "alfa-conecta-f96c5.firebasestorage.app",
+  messagingSenderId: "794650303984",
+  appId: "1:794650303984:web:21d76658bf9e94db97d135"
+};
 /* ===================== CARTA REAL (noviembre) ===================== */
 // i: [nombre, precio, descripción, flags]  flags: t=requiere término, e=estrella/ahumado con stock, r=solo con reserva
 const CARTA=[
