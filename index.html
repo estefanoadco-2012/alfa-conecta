@@ -205,7 +205,7 @@ details[open]>summary.btn{background:var(--brand);color:var(--brand-ink)}
   <div class="brandrow">
     <div class="logo">ALFA<small>MEAT CULTURE</small></div>
     <div class="sub">ALFA Conecta · sistema de servicio al cliente</div>
-    <div class="syncpill" id="sync">Modo demostración</div><button class="syncpill" id="logout" hidden style="border:0;color:inherit;cursor:pointer;margin-left:0">Salir</button>
+    <div class="sub" id="hoy" style="margin-left:auto"></div><div class="syncpill" id="sync" style="margin-left:0">Modo demostración</div><button class="syncpill" id="logout" hidden style="border:0;color:inherit;cursor:pointer;margin-left:0">Salir</button>
   </div>
   <nav class="roles" id="roles" aria-label="Vistas"></nav>
 </header>
@@ -1014,6 +1014,10 @@ async function borrarDemo(){
   if(live){try{for(const c of cols){const q=await db.collection(c).where("prueba","==",true).get();for(let i=0;i<q.docs.length;i+=400){const b=db.batch();q.docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit()}}toast("Datos de demostración borrados")}catch(e){toast("No se pudieron borrar los datos")}return}
   for(const id in S.mesas)if(S.mesas[id].prueba)delete S.mesas[id];["registros","evals","reclamos","llamados","reservas","club","ventas"].forEach(a=>S[a]=S[a].filter(x=>!x.prueba));render();toast("Datos de demostración borrados")}
 on("click","[data-demo]",b=>{const a=b.dataset.demo;if(demoPaso!==a){demoPaso=a;render();return}demoPaso=null;render();(a==="cargar"?cargarDemo:borrarDemo)()});
+
+/* Fecha de hoy en la cabecera (la del dispositivo) */
+function pintarHoy(){const el=document.getElementById("hoy");if(el){const t=new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});el.textContent=t.charAt(0).toUpperCase()+t.slice(1)}}
+pintarHoy();setInterval(pintarHoy,60000);
 
 /* ===================== ARRANQUE ===================== */
 demoSeed(); render();
