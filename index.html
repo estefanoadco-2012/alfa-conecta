@@ -889,7 +889,7 @@ function estadoK(K,v){if(v==null)return["SIN DATOS","",""];const e=K.u==="%"?100
   if(v>=K.meta-1e-9)return["EN META","ok",`+${nf(-gap,1)} pts sobre la meta`];
   if(gap<K.mg*e-1e-9)return["CERCA","warn",`faltan ${nf(gap,1)} pts`];return["BAJO META","alert",`faltan ${nf(gap,1)} pts`]}
 const MESL=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Set","Oct","Nov","Dic"];
-const mesLabel=m=>MESL[+m.slice(5,7)-1]+"-"+m.slice(2,4);
+const mesLabel=m=>MESL[+m.slice(5,7)-1]+" "+m.slice(0,4);
 let tm={per:"Todos",tur:"Todos",pun:"Todos",sim:false,k:4};
 const tmRows=()=>(tm.sim?SIM_HIST:[]).concat(S.registros.filter(r=>!r.simulado));
 const tmFilt=o=>tmRows().filter(r=>(o.per==="Todos"||r.mes===o.per)&&(o.tur==="Todos"||r.turno===o.tur)&&(o.pun==="Todos"||r.hora_punta===o.pun));

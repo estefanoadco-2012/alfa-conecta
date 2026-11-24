@@ -208,7 +208,7 @@ code{font-size:12px;background:var(--soft);padding:1px 5px;border-radius:4px}
     <section class="panel">
       <h3 id="trendTitle">Evolución mensual</h3>
       <p class="small">Toca una tarjeta para cambiar el KPI. Usa los filtros de turno y hora punta.</p>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Resultado del mes</span><span><i class="ln"></i>Meta</span><span><i class="ln dot"></i>Inicio (oct-26, real)</span></div>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Resultado del mes</span><span><i class="ln"></i>Meta</span><span><i class="ln dot"></i>Inicio (oct 2026, real)</span></div>
       <div class="chart" id="trend" style="min-height:260px"></div>
     </section>
 
@@ -356,7 +356,7 @@ code{font-size:12px;background:var(--soft);padding:1px 5px;border-radius:4px}
   const num = (v, d) => v.toFixed(d).replace('.', ',');
   const isN = (x) => typeof x === 'number' && !isNaN(x);
   const fmtK = (k, v) => (v == null ? '—' : k.unidad === '%' ? num(v * 100, 1) + '%' : (v >= 0 ? '+' : '') + num(v, 0));
-  const mesLabel = (m) => MES[Number(m.slice(5, 7)) - 1] + '-' + m.slice(2, 4);
+  const mesLabel = (m) => MES[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
 
   let rows = [];          // mesas
   let docs = [];          // [{id, data}]
